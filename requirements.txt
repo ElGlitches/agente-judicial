@@ -1,0 +1,13 @@
+streamlit
+watchdog
+google-generativeai
+requests
+
+psycopg[binary,pool]
+pgvector
+sentence-transformers
+python-dotenv
+beautifulsoup4
+docx2txt
+pypdf
+python-docx

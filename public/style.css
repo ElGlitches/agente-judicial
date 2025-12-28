@@ -1,0 +1,14 @@
+/* Esto oculta el logo de la esquina superior izquierda */
+header img {
+    display: none !important;
+}
+
+/* (Opcional) Esto oculta el botón de Github si aparece */
+a[href*="github"] {
+    display: none !important;
+}
+
+/* (Opcional) Esto oculta la marca "Built with Chainlit" de abajo */
+a[href*="chainlit"] {
+    display: none !important;
+}
