@@ -12,7 +12,7 @@ import ingest_module  # Nuevo módulo de ingesta
 
 load_dotenv()
 
-st.set_page_config(page_title="Agente Jurídico (PRUEBA)", page_icon="🧪")
+st.set_page_config(page_title="Agente Jurídico", page_icon="⚖️")
 
 # --- PATHS ---
 CHROMA_PATH = "chroma_db"
@@ -43,8 +43,7 @@ with st.sidebar:
     st.caption("Cerebro: gemini-flash-latest (Optimizado)")
     model_option = "gemini-flash-latest"
 
-st.title("🧪 Agente Jurídico (VERSIÓN DE PRUEBA)")
-st.warning("⚠️ Esta es una versión de demostración. Los documentos generados contienen marcas de agua.")
+st.title("⚖️ Agente Jurídico")
 
 # Configuración API
 if "google_api_key" not in st.session_state:
@@ -478,9 +477,7 @@ with st.expander("📝 Ficha del Caso (Generador Automático)", expanded=False):
             for attempt in range(max_retries):
                 try:
                     response = st.session_state.chat_session.send_message(full_prompt)
-                    # WATERMARK DE PRUEBA
-                    watermark = "\n\n" + ("🚨 " * 10) + "\nDOCUMENTO GENERADO EN VERSIÓN DE PRUEBA - NO VÁLIDO PARA PRESENTACIÓN\n" + ("🚨 " * 10)
-                    body_text = response.text.replace("\n", "\n\n") + watermark
+                    body_text = response.text.replace("\n", "\n\n")
                     
                     # Guardar en Estado para persistencia
                     st.session_state.is_generated_doc = True
