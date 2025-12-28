@@ -8,7 +8,7 @@ Los abogados gastamos horas redactando escritos que son, en un 80%, "copiar y pe
 
 ## La Solución
 Hemos construido un sistema híbrido que combina:
-1.  **Tu Biblioteca Privada ("La Memoria"):** Una base de datos segura (PostgreSQL + pgvector) donde guardas tus escritos exitosos (ej. "Modelo 1025").
+1.  **Tu Biblioteca Privada ("La Memoria"):** Una base de datos segura (ChromaDB Local) donde guardas tus escritos exitosos (ej. "Modelo 1025").
 2.  **Un Cerebro Inteligente ("El Digitador"):** Un motor (Google Gemini) instruido para actuar como un digitador obediente, no creativo.
 
 ## Cómo Funciona (El Flujo)

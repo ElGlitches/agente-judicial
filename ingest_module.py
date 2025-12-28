@@ -1,8 +1,7 @@
 
 import os
-import psycopg
-from pgvector.psycopg import register_vector
-from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 import docx2txt
 from docx import Document
@@ -11,12 +10,12 @@ from pypdf import PdfReader
 load_dotenv()
 
 # --- CONFIGURACIÓN ---
-DB_URL = "postgresql://admin:admin@localhost:5432/pjud_db"
+CHROMA_PATH = "chroma_db"
 DOCS_FOLDER = "./docs/"
 
 def run_ingestion():
     """
-    Escanea la carpeta DOCS_FOLDER y regenera la base de datos vectorial.
+    Escanea la carpeta DOCS_FOLDER y regenera la base de datos vectorial local (ChromaDB).
     Retorna un string con el resumen del proceso.
     """
     log_messages = []
@@ -26,30 +25,31 @@ def run_ingestion():
         log_messages.append(msg)
 
     try:
-        # 1. Conexión y Limpieza de Tabla
-        log("🔌 Conectando a Base de Datos...")
-        # Nota: Usamos autocommit=True para operaciones DDL (DROP/CREATE)
-        with psycopg.connect(DB_URL, autocommit=True) as conn:
-            conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            conn.execute("DROP TABLE IF EXISTS escritos")
-            conn.execute("""
-                CREATE TABLE escritos (
-                    id SERIAL PRIMARY KEY,
-                    content TEXT,
-                    filename TEXT,
-                    chunk_index INTEGER,
-                    embedding vector(384)
-                )
-            """)
-        log("✅ Base de datos limpiada y estructurada (v2).")
+        # 1. Inicializar Cliente Chroma (Persistente)
+        log(f"🧠 Inicializando ChromaDB en '{CHROMA_PATH}'...")
+        client = chromadb.PersistentClient(path=CHROMA_PATH)
+        
+        # 2. Configurar Función de Embeddings
+        # Usamos la misma 'all-MiniLM-L6-v2' que es estándar y ligera
+        sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+        
+        # 3. Resetear Colección (Borrar anterior y crear nueva)
+        collection_name = "escritos_judiciales"
+        try:
+            client.delete_collection(name=collection_name)
+            log("🗑️ Colección anterior eliminada.")
+        except Exception:
+            pass # No existía o error irrelevante al borrar
+            
+        collection = client.get_or_create_collection(
+            name=collection_name, 
+            embedding_function=sentence_transformer_ef
+        )
+        log("✅ Nueva colección creada.")
 
-        # 2. Cargar Modelo
-        # Usamos caché de Streamlit en app.py, pero aquí cargamos fresco o podríamos reusar si pasamos el modelo.
-        # Para simplificar y aislar, cargamos aquí. Es rápido 'all-MiniLM-L6-v2'.
-        log("🧠 Cargando modelo neuronal...")
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-
-        # 3. Procesar Archivos
+        # 4. Procesar Archivos
         log(f"📂 Escaneando carpeta {DOCS_FOLDER}...")
         
         if not os.path.exists(DOCS_FOLDER):
@@ -62,58 +62,60 @@ def run_ingestion():
 
         processed_count = 0
         
-        # Reconectamos para insertar
-        with psycopg.connect(DB_URL) as conn:
-            register_vector(conn)
-            
-            for filename in files:
-                file_path = os.path.join(DOCS_FOLDER, filename)
-                raw_text = ""
+        for filename in files:
+            file_path = os.path.join(DOCS_FOLDER, filename)
+            raw_text = ""
 
-                try:
-                    # Detectar tipo
-                    if filename.lower().endswith(".docx"):
-                        # Intentar primero con python-docx (mejor calidad a veces) o docx2txt
-                        try:
-                            doc = Document(file_path)
-                            raw_text = "\n".join([p.text for p in doc.paragraphs])
-                        except:
-                            raw_text = docx2txt.process(file_path)
-                            
-                    elif filename.lower().endswith(".doc"):
-                         log(f"⚠️ SALTADO: {filename} (Formato .doc antiguo no soportado, convierte a .docx)")
-                         continue
-                         
-                    elif filename.lower().endswith(".pdf"):
-                        reader = PdfReader(file_path)
-                        for page in reader.pages:
-                            raw_text += page.extract_text() + "\n"
-                    else:
-                        log(f"⚠️ SALTADO: {filename} (Formato desconocido)")
+            try:
+                # Detectar tipo
+                if filename.lower().endswith(".docx"):
+                    try:
+                        doc = Document(file_path)
+                        raw_text = "\n".join([p.text for p in doc.paragraphs])
+                    except:
+                        raw_text = docx2txt.process(file_path)
+                        
+                elif filename.lower().endswith(".doc"):
+                        log(f"⚠️ SALTADO: {filename} (Formato .doc antiguo no soportado, convierte a .docx)")
                         continue
+                        
+                elif filename.lower().endswith(".pdf"):
+                    reader = PdfReader(file_path)
+                    for page in reader.pages:
+                        raw_text += page.extract_text() + "\n"
+                else:
+                    log(f"⚠️ SALTADO: {filename} (Formato desconocido)")
+                    continue
+                
+                if raw_text:
+                    # Insertar nombre de archivo como metadato clave en el texto tambien
+                    # Esto ayuda al modelo a "ver" el nombre del archivo en el contexto
+                    text_with_meta = f"[[NOMBRE ARCHIVO: {filename}]]\n\n" + raw_text
                     
-                    if raw_text:
-                        # Insertar nombre de archivo como metadato clave en el texto tambien
-                        text_with_meta = f"[[NOMBRE ARCHIVO: {filename}]]\n\n" + raw_text
-                        
-                        # Chunks
-                        chunks = [text_with_meta[i:i+1000] for i in range(0, len(text_with_meta), 900)]
-                        
-                        for idx, chunk in enumerate(chunks):
-                            vector = model.encode(chunk).tolist()
-                            conn.execute(
-                                "INSERT INTO escritos (content, filename, chunk_index, embedding) VALUES (%s, %s, %s, %s)",
-                                (chunk, filename, idx, vector)
-                            )
-                        
-                        log(f"   - ✅ {filename} ({len(chunks)} fragmentos)")
-                        processed_count += 1
-                        
-                except Exception as e:
-                    log(f"❌ Error en {filename}: {e}")
+                    # Chunks
+                    chunk_size = 1000
+                    overlap = 100
+                    chunks = [text_with_meta[i:i+chunk_size] for i in range(0, len(text_with_meta), chunk_size - overlap)]
+                    
+                    # Preparar listas para batch
+                    ids = [f"{filename}_{i}" for i in range(len(chunks))]
+                    metadatas = [{"filename": filename, "chunk_index": i} for i in range(len(chunks))]
+                    documents = chunks
+                    
+                    if documents:
+                        collection.add(
+                            documents=documents,
+                            metadatas=metadatas,
+                            ids=ids
+                        )
+                    
+                    log(f"   - ✅ {filename} ({len(chunks)} fragmentos)")
+                    processed_count += 1
+                    
+            except Exception as e:
+                log(f"❌ Error en {filename}: {e}")
 
-        conn.close()
-        return "\n".join(log_messages) + f"\n\n🎉 ¡Listo! {processed_count} documentos procesados (Modo Estructurado v2)."
+        return "\n".join(log_messages) + f"\n\n🎉 ¡Listo! {processed_count} documentos procesados en ChromaDB (Sin Docker)."
 
     except Exception as e:
         return f"❌ Error Crítico: {e}"
