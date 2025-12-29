@@ -7,3 +7,4 @@ sentence-transformers
 chromadb
 docx2txt
 docx2txt
+beautifulsoup4
