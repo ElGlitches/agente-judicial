@@ -8,7 +8,7 @@ A diferencia de otras inteligencias artificiales, este sistema **respeta sagrada
 
 ## ✨ Funcionalidades Clave
 
-### 1. Fidelidad Absoluta de Formato ("La Fotocopiadora")
+### 1. Fidelidad Absoluta de Formato 
 El sistema toma su modelo Word y lo replica con exactitud.
 *   **Encabezados y Tablas:** Se mantienen idénticos.
 *   **Otrosíes:** Se copian textuales.

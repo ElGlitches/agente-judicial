@@ -12,10 +12,15 @@ from tools_bcn import obtener_ley_bcn
 from auth_logic import check_authentication
 from rag_logic import buscar_modelos_locales
 from doc_logic import get_header_docx
+import docx2txt
+from usage_logic import init_usage_db, get_user_status, check_can_generate, log_generation
 
 load_dotenv()
 
 st.set_page_config(page_title="Agente Jurídico", page_icon="⚖️")
+
+# --- DATABASE INIT ---
+init_usage_db()
 
 # --- AUTHENTICATION ---
 # Protege toda la app. Si falla, detiene la ejecución.
@@ -27,6 +32,19 @@ DOCS_PATH = "./docs/"
 # --- SIDEBAR ---
 with st.sidebar:
     st.write(f"👤 **{st.session_state['name']}**")
+    
+    # --- SAAS BILLING INFO ---
+    user_count, is_pro = get_user_status(st.session_state['username'])
+    if is_pro:
+        st.metric("Plan", "⭐ PRO", "Ilimitado")
+    else:
+        st.metric("Tus Créditos", f"{user_count}/3", f"{3-user_count} restantes")
+        if user_count >= 3:
+            st.error("🔒 Límite Alcanzado")
+            st.markdown("[🚀 Actualizar a PRO](https://buy.stripe.com/test_placeholder)")
+        else:
+            st.progress(user_count / 3)
+    
     authenticator.logout("Cerrar Sesión", "sidebar")
     st.divider()
     
@@ -57,8 +75,13 @@ st.title("⚖️ Agente Jurídico")
 
 # Configuración API
 if "google_api_key" not in st.session_state:
-    st.session_state.google_api_key = os.getenv("GOOGLE_API_KEY")
+    if os.getenv("GOOGLE_API_KEY"):
+        st.session_state.google_api_key = os.getenv("GOOGLE_API_KEY")
 
+if not st.session_state.get("google_api_key"):
+    st.warning("⚠️ Falta API Key. Configura .env o Secrets.")
+    st.stop()
+    
 genai.configure(api_key=st.session_state.google_api_key)
 
 tools_list = [buscar_modelos_locales, obtener_ley_bcn]
@@ -126,15 +149,35 @@ with st.expander("Ver más datos (Abogado, Niño, Historia, etc)"):
     col3, col4 = st.columns(2)
     with col3:
         nombre_menor = st.text_input("Nombre Niño/a:", value="Juanito Perez Soto")
+        gen_menor = st.selectbox("Género Menor:", ["Niño", "Niña"])
         abogado = st.text_input("Abogado:", value="Iván Abogado")
         rut_abogado_val = st.text_input("RUT Abogado:", value="10.000.000-0")
     with col4:
+        rel_ddo = st.selectbox("Relación del Demandado con el Menor:", ["Padre", "Madre"])
         domicilio_abogado = st.text_input("Domicilio Abogado:", value="Huérfanos 1111, Of. 88")
         otros_datos = st.text_area("Historia / Hechos Nuevos:", height=150, 
             value="Se casaron el 2010, se separaron el 2022. El padre aporta irregularmente. Se solicita pensión de $350.000.")
 
 # Botón Generar
 if st.button("✨ Redactar Escrito", type="primary"):
+    # --- SAAS CHECK ---
+    can_gen, status_code = check_can_generate(st.session_state['username'])
+    if not can_gen:
+        st.error(f"🛑 Límite de documentos alcanzado ({status_code}).")
+        st.markdown(f"""
+        <div style="background-color:#ffebee; padding:15px; border-radius:10px; border:1px solid #ffcdd2;">
+            <h4>🔒 Actualiza a PRO</h4>
+            <p>Has consumido tus 3 documentos de cortesía del Plan Freemium.</p>
+            <ul>
+                <li>✅ Generaciones Ilimitadas</li>
+                <li>✅ Prioridad de Procesamiento</li>
+                <li>✅ Descargas en Word</li>
+            </ul>
+            <a href="https://buy.stripe.com/test_placeholder" target="_blank" style="background-color:#d32f2f; color:white; padding:10px 20px; text-decoration:none; border-radius:5px; font-weight:bold;">👉 COMPRAR ACCESO ILIMITADO ($20.000)</a>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
+    
     # 1. Analizar si es búsqueda inteligente
     if selected_doc == "Selección Inteligente (Buscar por tema)":
         with st.spinner("🔍 Buscando modelo..."):
@@ -148,73 +191,111 @@ if st.button("✨ Redactar Escrito", type="primary"):
             "nombre_dte": nombre_dte, "nombre_ddo": nombre_ddo,
             "abogado": abogado, "rut_dte": rut_dte, "rut_ddo": rut_ddo,
             "domicilio": domicilio, "domicilio_dte": "GENERAL CELEDÓN Nº 10290, DEPTO 202",
-            "domicilio_abogado": domicilio_abogado, "rut_abogado_val": rut_abogado_val
+            "domicilio_abogado": domicilio_abogado, "rut_abogado_val": rut_abogado_val,
+            "gen_menor": gen_menor, "rel_ddo": rel_ddo
         }
         
         # LLAMADA A DOC_LOGIC (Recuperar Header + Preview)
         doc_obj, header_preview = get_header_docx(selected_doc, data_dict)
         
-        # LEER CONTENIDO DEL ARCHIVO PARA INYECTARLO AL PROMPT (Critical for Bypass)
+        # LEER CONTENIDO DEL ARCHIVO
         doc_text_content = ""
         try:
             source_path = os.path.join(DOCS_PATH, selected_doc)
-            temp_doc = Document(source_path)
+            # Usar docx2txt para extraer texto completo rapido para contexto
+            doc_text_content = docx2txt.process(source_path)
             
-            # --- CONTEXT CLEANING: Cortar Header del Contexto ---
-            full_paras = [p.text for p in temp_doc.paragraphs if p.text.strip()]
-            start_idx = 0
-            for i, txt in enumerate(full_paras):
-                # Usamos match estricto. "HECHOS" solo es peligroso pq coincide con "Fundamentos de Hecho".
-                # Buscamos variaciones comunes de titulos.
-                clean_txt = txt.upper().strip()
-                if "LOS HECHOS" in clean_txt or clean_txt == "HECHOS" or "1.- HECHOS" in clean_txt:
-                    start_idx = i
-                    break
+            # Smart Slicing para quitar header del contexto que se envia a la IA
+            if "LOS HECHOS" in doc_text_content.upper():
+                 parts = doc_text_content.upper().split("LOS HECHOS", 1)
+                 # Reconstruimos usando el casing original (aproximado, aquí perdemos casing si spliteamos Upper)
+                 # Mejor buscamos índice.
+                 idx = doc_text_content.upper().find("LOS HECHOS")
+                 if idx != -1:
+                      doc_text_content = "LOS HECHOS" + doc_text_content[idx+10:]
             
-            # Si start_idx sigue siendo 0, intentamos una heurística de emergencia:
-            final_paras = full_paras[start_idx:]
-            doc_text_content = "\n".join(final_paras)
-            
-            # --- SAFETY CHECK: Si el corte dejó el texto vacío (o muy corto), usar todo ---
+            # Fallback length
             if len(doc_text_content) < 200:
-                doc_text_content = "\n".join(full_paras)
-            
+                 doc_text_content = docx2txt.process(source_path)
+
         except Exception as e:
-            doc_text_content = f"[Error leyendo archivo fuente: {e}]"
+            st.error(f"Error leyendo archivo fuente: {e}")
+            st.stop()
             
+        # --- BCN GROUNDING (NUEVO) ---
+        bcn_context = ""
+        with st.status("🏛️ Consultando Biblioteca del Congreso (BCN)...", expanded=False) as status:
+            from tools_bcn import obtener_ley_bcn
+            # Detectar ley relevante según materia
+            leyes_clave = []
+            if "Alimentos" in materia:
+                leyes_clave.append("14908") # Ley de Alimentos
+            
+            if leyes_clave:
+                status.write(f"Detectadas leyes clave: {leyes_clave}")
+                for ley_id in leyes_clave:
+                    texto_ley = obtener_ley_bcn(ley_id)
+                    if "Error" not in texto_ley:
+                         # Truncamos para no explotar ventana de contexto, aunque Flash aguanta mucho.
+                         bcn_context += f"\n--- LEY {ley_id} (TEXTO OFICIAL VIGENTE) ---\n{texto_ley[:15000]}\n"
+                         status.write(f"✅ Ley {ley_id} descargada.")
+                    else:
+                         status.write(f"⚠️ No se pudo descargar Ley {ley_id}.")
+            else:
+                status.write("No se detectaron leyes específicas para descarga automática.")
+            status.update(label="Validación BCN Completa", state="complete", expanded=False)
+
         # --- DEBUG UI (Solo visible si hay problemas o para verificar) ---
         with st.expander("🛠️ Debug: Información enviada a la IA"):
             st.write(f"Caracteres leídos del modelo: {len(doc_text_content)}")
             st.write(f"Inicio del texto (preview): {doc_text_content[:200]}...")
+            if bcn_context:
+                st.write(f"Caracteres de contexto BCN: {len(bcn_context)}")
+                st.write(f"Inicio contexto BCN (preview): {bcn_context[:200]}...")
 
-        full_prompt = f"""ROL: MÁQUINA DE COPIADO INTELIGENTE.
+        # ---------------- PROMPT ENGINEERING ----------------
+        full_prompt = f"""ROL: ABOGADO EXPERTO + FOTOCOPIADORA INTELIGENTE.
         
         INPUT:
-        1. MODELO FUENTE (Texto Legal).
-        2. DATOS NUEVOS (Cliente).
+        1. MODELO FUENTE (Tu base).
+        2. CONTEXTO BCN (La Ley Oficial).
+        3. DATOS NUEVOS (Cliente).
         
         INSTRUCCIÓN MAESTRA:
-        "COPIA EL TEXTO DEL MODELO FUENTE REEMPLAZANDO LOS DATOS ANTIGUOS POR LOS NUEVOS".
+        "ADAPTA LOS HECHOS, COPIA EL RESTO, Y VALIDA EL DERECHO CON LA BCN".
         
-        REGLA DE ORO DE INICIO:
-        **TU RESPUESTA DEBE COMENZAR OBLIGATORIAMENTE CON EL TÍTULO: "LOS HECHOS"**.
-        (Ignora cualquier tabla, suma o introducción que veas antes de "LOS HECHOS" en el modelo fuente. YA ESTÁN ESCRITOS).
+        TUS 3 MODOS DE OPERACIÓN:
         
-        PROHIBICIONES (FATALES):
-        - NO COPIES EL ENCABEZADO (Nada antes de "LOS HECHOS").
-        - **PROHIBIDO USAR LISTAS O MARKDOWN**: No uses asteriscos (**texto**), ni guiones (-), ni numeración automática (1.). Escribe en PÁRRAFOS como un escrito judicial tradicional.
-        - NO INVENTES LEYES.
-        - NO RESUMAS LOS HECHOS.
-        - NO OLVIDES LOS OTROSÍS.
-        - **DETECTA Y REEMPLAZA TEXTO GENÉRICO**: Si ves "XXXXX", "..." o "[DATOS]" en el original, REEMPLÁZALOS por los datos reales (Nombre, RUT, Abogado). NO LOS DEJES VACÍOS.
+        1. **MODO NARRATIVO ("LOS HECHOS")**:
+           - Redacta una historia coherente usando los DATOS NUEVOS.
+           - Adapta el estilo del modelo, pero haz que suene natural.
+        
+        2. **MODO LEGAL ("EL DERECHO")**:
+           - **PRIORIDAD BCN**: Si el modelo cita la Ley 14.908 (Alimentos), VERIFICA el articulado con el CONTEXTO BCN provisto.
+           - Si el modelo tiene una cita desactualizada, CORRÍGELA usando el texto de la BCN.
+           - Si no tienes la ley completa, mantén la cita del modelo (Fallback).
+        
+        3. **MODO FOTOCOPIADORA ("OTROSÍS")**:
+           - Copia y pega exacto. Reemplaza Placeholders.
+
+        REGLAS DE FORMATO:
+        - **PROHIBIDO MARKDOWN**: Nada de negritas, escriba texto plano.
+        - **CERO PLACEHOLDERS**: Rellena todo.
+        - **INICIO**: Empieza desde "LOS HECHOS".
         
         DATOS NUEVOS:
         - DEMANDANTE: {nombre_dte} ({rut_dte}).
         - DEMANDADO: {nombre_ddo} ({rut_ddo}).
         - NIÑO/A: {nombre_menor}.
-        - HISTORIA: {otros_datos}.
+        - ABOGADO: {abogado} (RUT: {rut_abogado_val}).
+        - HISTORIA DEL CLIENTE: "{otros_datos}".
+
+        CONTEXTO LEGAL OFICIAL (BCN):
+        [[[
+        {bcn_context}
+        ]]]
         
-        MODELO FUENTE A PROCESAR:
+        MODELO FUENTE:
         [[[
         {doc_text_content[:25000]} 
         ]]]
@@ -278,6 +359,10 @@ if st.button("✨ Redactar Escrito", type="primary"):
                 # Persistencia
                 body_text = final_body_text.replace("\n", "\n\n") # Markdown friendly spacing
                 st.session_state.is_generated_doc = True
+                
+                # --- SAAS LOGGING ---
+                log_generation(st.session_state['username'])
+                
                 st.session_state.last_header = header_preview
                 st.session_state.last_body = body_text
                 st.session_state.selected_doc_for_download = selected_doc

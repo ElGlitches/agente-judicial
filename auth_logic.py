@@ -1,48 +1,57 @@
 import streamlit as st
-import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
+from usage_logic import verify_login
+
+class CustomAuthenticator:
+    def logout(self, label="Logout", key="logout_btn", location="sidebar"):
+        if location == "sidebar":
+            if st.sidebar.button(label, key=key):
+                st.session_state["authentication_status"] = None
+                st.session_state["name"] = None
+                st.session_state["username"] = None
+                st.rerun()
+        else:
+             if st.button(label, key=key):
+                st.session_state["authentication_status"] = None
+                st.session_state["name"] = None
+                st.session_state["username"] = None
+                st.rerun()
 
 def check_authentication():
     """
-    Maneja el flujo de autenticación completo.
-    Retorna el objeto 'authenticator' para usar el botón de logout.
-    Detiene la app (st.stop()) si el login falla.
+    Nuevo flujo de Auth usando SQLite (usage_logic.py).
+    Reemplaza a streamlit-authenticator para no depender de config.yaml.
     """
-    try:
-        # Cargar configuración desde secrets
-        auth_config = st.secrets["credentials"]
-        cookie_config = st.secrets["cookie"]
+    # Inicializar estado
+    if "authentication_status" not in st.session_state:
+        st.session_state["authentication_status"] = None
+    
+    # 1. Si ya está logueado, retornar dummy object con metodo logout
+    if st.session_state["authentication_status"]:
+        return CustomAuthenticator()
+    
+    # 2. Si no está logueado, mostrar Formulario
+    st.markdown("## 🔐 Iniciar Sesión")
+    
+    # Formulario Login
+    with st.form("login_form"):
+        username = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+        submit = st.form_submit_button("Entrar")
         
+        if submit:
+            is_valid, name = verify_login(username, password)
+            if is_valid:
+                st.session_state["authentication_status"] = True
+                st.session_state["name"] = name
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.session_state["authentication_status"] = False
+                st.error("❌ Usuario o contraseña incorrectos")
 
-        # Helper para convertir recursivamente st.secrets (AttrDict) a dict normal
-        def to_plain_dict(secrets_obj):
-            if isinstance(secrets_obj, dict) or str(type(secrets_obj)).endswith("AttrDict'>"):
-                return {k: to_plain_dict(v) for k, v in secrets_obj.items()}
-            return secrets_obj
-
-        # Transformar a formato esperado (Mutable)
-        credentials = to_plain_dict(st.secrets["credentials"])
-
-        authenticator = stauth.Authenticate(
-            credentials,
-            cookie_config['name'],
-            cookie_config['key'],
-            cookie_config['expiry_days']
-        )
-        
-        # Login Widget
-        authenticator.login()
-        
-        if st.session_state["authentication_status"] is False:
-            st.error("Usuario o contraseña incorrectos")
-            st.stop()
-        elif st.session_state["authentication_status"] is None:
-            st.warning("Por favor, inicia sesión para continuar")
-            st.stop()
-            
-        return authenticator
-        
-    except Exception as e:
-        st.error(f"Error en sistema de autenticación: {e}")
+    if st.session_state["authentication_status"] is False:
         st.stop()
+        
+    # Detener app si no está logueado
+    st.info("Credenciales por defecto: admin / admin123")
+    st.stop()

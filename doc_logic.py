@@ -91,10 +91,15 @@ def get_header_docx(selected_doc, data_dict):
                      f"{data_dict['nombre_menor'].upper()}, chileno, del mismo domicilio, a S.S. respetuosamente digo:"
                  )
             
+            # Lógica de Género para Bridge Text
+            term_rel = data_dict.get("rel_ddo", "Padre").lower() # padre / madre
+            term_child = "del niño" if data_dict.get("gen_menor", "Niño") == "Niño" else "de la niña"
+            term_child_indiv = "individualizado" if data_dict.get("gen_menor", "Niño") == "Niño" else "individualizada"
+
             bridge_text = (
                 f"Que vengo en interponer la presente demanda de {data_dict['materia']} en contra de {data_dict['nombre_ddo'].upper()}, "
                 f"cédula nacional de identidad Nº {data_dict['rut_ddo']}, domiciliado en {data_dict['domicilio'].upper()}, "
-                "en su calidad de progenitor del niño/a anteriormente individualizado/a, "
+                f"en su calidad de {term_rel} {term_child} anteriormente {term_child_indiv}, "
                 "todo ello en virtud de los fundamentos de hecho y de derecho que paso a exponer:"
             )
             
@@ -185,7 +190,8 @@ def get_header_docx(selected_doc, data_dict):
         for child in elements_to_remove:
             body_element.remove(child)
 
-        doc.add_paragraph("\n" + "_"*40 + "\n(Cuerpo generado por IA comienza aquí)\n")
+        # Separador visual eliminado para producción
+        # doc.add_paragraph("\n" + "_"*40 + "\n(Cuerpo generado por IA comienza aquí)\n")
         
         return doc, preview_text
         
