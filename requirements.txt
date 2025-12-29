@@ -8,3 +8,4 @@ chromadb
 docx2txt
 docx2txt
 beautifulsoup4
+streamlit-authenticator
