@@ -478,7 +478,9 @@ with st.expander("📝 Ficha del Caso (Generador Automático)", expanded=False):
         with st.spinner("⚖️ Digitando y reemplazando datos..."):
             for attempt in range(max_retries):
                 try:
-                    response = st.session_state.chat_session.send_message(full_prompt, stream=True)
+                    # BYPASS CHAT SESSION AUTO-TOOLS to allow STREAMING
+                    # Using the underlying model directly avoids the "stream=True + auto_function_calling" SDK error.
+                    response = st.session_state.chat_session.model.generate_content(full_prompt, stream=True)
                     break 
                 except Exception as e:
                     # Retry logic inside spinner
