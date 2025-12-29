@@ -12,7 +12,7 @@ import ingest_module  # Nuevo módulo de ingesta
 
 load_dotenv()
 
-st.set_page_config(page_title="Agente Jurídico (PRUEBA)", page_icon="🧪")
+st.set_page_config(page_title="Agente Jurídico", page_icon="⚖️")
 
 # --- PATHS ---
 CHROMA_PATH = "chroma_db"
@@ -43,8 +43,7 @@ with st.sidebar:
     st.caption("Cerebro: gemini-flash-latest (Optimizado)")
     model_option = "gemini-flash-latest"
 
-st.title("🧪 Agente Jurídico (VERSIÓN DE PRUEBA)")
-st.warning("⚠️ Esta es una versión de demostración. Los documentos generados contienen marcas de agua.")
+st.title("⚖️ Agente Jurídico")
 
 # Configuración API
 if "google_api_key" not in st.session_state:
@@ -470,45 +469,65 @@ with st.expander("📝 Ficha del Caso (Generador Automático)", expanded=False):
         ui_prompt = f"Generar escrito basado en '{selected_doc}' para {nombre_dte} vs {nombre_ddo}."
         st.session_state.history.append({"role": "user", "text": ui_prompt})
         
-        with st.spinner("⚖️ Digitando y reemplazando datos..."):
-            import time
-            max_retries = 3
-            wait_time = 20
+        import time
+        max_retries = 3
+        wait_time = 20
+
+            # 1. INICIAR CONEXIÓN (CON SPINNER)
+            response = None
+            with st.spinner("⚖️ Digitando y reemplazando datos..."):
+                for attempt in range(max_retries):
+                    try:
+                        response = st.session_state.chat_session.send_message(full_prompt, stream=True)
+                        break 
+                    except Exception as e:
+                        # Retry logic inside spinner
+                        is_quota_error = "429" in str(e) or "Quota exceeded" in str(e)
+                        if is_quota_error and attempt < max_retries - 1:
+                            time.sleep(20)
+                        else:
+                            st.error(f"Error al conectar: {e}")
+                            response = None
+                            break
             
-            for attempt in range(max_retries):
+            # 2. STREAMING (SIN SPINNER PUES YA TENEMOS CONEXIÓN)
+            if response:
                 try:
-                    response = st.session_state.chat_session.send_message(full_prompt)
-                    # WATERMARK DE PRUEBA
-                    watermark = "\n\n" + ("🚨 " * 10) + "\nDOCUMENTO GENERADO EN VERSIÓN DE PRUEBA - NO VÁLIDO PARA PRESENTACIÓN\n" + ("🚨 " * 10)
-                    body_text = response.text.replace("\n", "\n\n") + watermark
+                    with st.chat_message("assistant"):
+                        message_placeholder = st.empty()
+                        full_response = ""
+                        
+                        # Header Preview
+                        if header_preview.strip():
+                            full_response += f"**VISTA PREVIA ENCABEZADO (Automático):**\n```text\n{header_preview}\n```\n\n**DESARROLLO (IA):**\n"
+                        
+                        accumulated_body = ""
+                        # Consumir el stream
+                        for chunk in response:
+                            if chunk.text:
+                                accumulated_body += chunk.text
+                                message_placeholder.markdown(full_response + accumulated_body + "▌")
+                        
+                        # WATERMARK DE PRUEBA (Restored)
+                        watermark = "\n\n" + ("🚨 " * 10) + "\nDOCUMENTO GENERADO EN VERSIÓN DE PRUEBA - NO VÁLIDO PARA PRESENTACIÓN\n" + ("🚨 " * 10)
+                        accumulated_body += watermark
+
+                        # Final flush
+                        message_placeholder.markdown(full_response + accumulated_body)
                     
-                    # Guardar en Estado para persistencia
+                    # Guardar persistencia
+                    body_text = accumulated_body.replace("\n", "\n\n")
                     st.session_state.is_generated_doc = True
                     st.session_state.last_header = header_preview
                     st.session_state.last_body = body_text
                     st.session_state.selected_doc_for_download = selected_doc
                     st.session_state.data_dict_for_download = data_dict
                     
-                    # Mostrar en Historial
-                    if header_preview.strip():
-                         full_display = f"**VISTA PREVIA ENCABEZADO (Automático):**\n```text\n{header_preview}\n```\n\n**DESARROLLO (IA):**\n{body_text}"
-                    else:
-                         full_display = body_text
-                    
-                    st.session_state.history.append({"role": "assistant", "text": full_display})
+                    st.session_state.history.append({"role": "assistant", "text": full_response + accumulated_body})
                     st.rerun()
-                    break
                     
                 except Exception as e:
-                    is_quota_error = "429" in str(e) or "Quota exceeded" in str(e)
-                    if is_quota_error and attempt < max_retries - 1:
-                        st.warning(f"⚠️ Cuota excedida ({model_option}). Esperando {wait_time}s para reintentar (Intento {attempt+1}/{max_retries})...")
-                        time.sleep(wait_time)
-                        wait_time += 15 # Backoff incremental
-                        continue
-                    else:
-                        st.error(f"Error al generar: {e}")
-                        break
+                     st.error(f"Error durante streaming: {e}")
 
 # --- INTERFAZ ---
 for msg in st.session_state.history:
