@@ -3,9 +3,8 @@ google-generativeai
 python-dotenv
 python-docx
 pypdf
-sentence-transformers
 chromadb
 docx2txt
 beautifulsoup4
-streamlit-authenticator
 watchdog
+requests

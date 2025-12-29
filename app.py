@@ -68,8 +68,8 @@ with st.sidebar:
 
     st.divider()
     st.header("🤖 Configuración Cerebro")
-    st.caption("Cerebro: gemini-flash-latest (Optimizado)")
-    model_option = "gemini-flash-latest"
+    st.caption("Cerebro: gemini-flash-lite-latest (Respaldo Funcionando)")
+    model_option = "gemini-flash-lite-latest"
 
 st.title("⚖️ Agente Jurídico")
 
@@ -338,11 +338,15 @@ if st.button("✨ Redactar Escrito", type="primary"):
                     accumulated_raw = ""
                     
                     for chunk in response:
-                        if chunk.text:
-                            accumulated_raw += chunk.text
-                            # Lógica visual simple (mostramos todo por ahora para no romper UX de streaming)
-                            # La limpieza real la haremos al final para el documento.
-                            message_placeholder.markdown(full_response + accumulated_raw + "▌")
+                        try:
+                            if chunk.text:
+                                accumulated_raw += chunk.text
+                                # Lógica visual simple (mostramos todo por ahora para no romper UX de streaming)
+                                # La limpieza real la haremos al final para el documento.
+                                message_placeholder.markdown(full_response + accumulated_raw + "▌")
+                        except ValueError:
+                             # Captura error cuando chunk.text no tiene contenido (finish_reason)
+                             pass
                     
                     # --- POST-PROCESSING FORCE CLEAN ---
                     # Si la IA desobedeció y puso el header, lo cortamos programáticamente.

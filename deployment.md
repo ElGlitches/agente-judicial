@@ -40,20 +40,39 @@ Si prefieres no subir nada a la nube y que la gente se conecte directo a tu comp
 ### Usando `ngrok` (Recomendado)
 Esta herramienta crea un "puente" seguro desde internet hasta tu puerto 8501.
 
-1.  **Descargar**: Ve a [ngrok.com](https://ngrok.com/download) e instálalo.
-2.  **Conectar**: Abre una terminal y escribe:
+1.  **Instalar**: ¡Ya lo hice por ti!
+2.  **Autenticar (Solo la primera vez)**: 
+    *   Crea una cuenta gratis en [ngrok.com](https://dashboard.ngrok.com/signup).
+    *   Copia tu "Authtoken" del panel de control.
+    *   Ejecuta en la terminal:
+        ```bash
+        ./ngrok config add-authtoken TU_TOKEN_AQUI
+        ```
+3.  **Conectar**: Ahora sí, lanza el túnel:
     ```bash
-    ngrok http 8504
+    ./ngrok http 8504
     ```
-    *(Nota: Usa el puerto donde está corriendo tu Streamlit, por ejemplo 8504).*
-3.  **Compartir**: Ngrok te dará una URL (ej: `https://a1b2-c3d4.ngrok-free.app`).
+4.  **Compartir**: Ngrok te dará una URL (ej: `https://a1b2-c3d4.ngrok-free.app`).
 4.  **Listo**: Mándale ese link a tu cliente.
 
+### Opción C: Túnel Mágico (Sin instalación ni cuentas) 🪄
+Este es un truco secreto de programadores. Usa `ssh`, que ya viene en tu Mac.
+
+1.  Abre la terminal.
+2.  Escribe y presiona Enter:
+    ```bash
+    ssh -R 80:localhost:8504 nokey@localhost.run
+    ```
+    *(Si te pregunta "Are you sure...", escribe `yes` y dale Enter).*
+3.  Te mostrará un mensaje como:
+    `Connect to http://tunel-xyz.localhost.run`
+4.  ¡Ese es tu link público! Copialo y úsalo.
+
 ### Pros y Contras
-*   ✅ **Rápido**: No hay que configurar servidores.
-*   ✅ **Privado**: Solo existe mientras tú quieras.
-*   ❌ **Pc Encendido**: Si apagas tu computador o cierras la terminal, el link muere.
-*   ❌ **Url Cambiante**: Cada vez que lo reinicias, el link cambia (en la versión gratis).
+*   ✅ **Ultra Rápido**: Sin cuentas, sin bajar nada.
+*   ✅ **Fácil**: 1 línea de comando.
+*   ❌ **Inestable**: A veces se desconecta si hay mucha gente usándolo.
+*   ❌ **Pc Encendido**: Igual que el anterior, muere si cierras la terminal.
 
 ---
 ## Notas Importantes sobre SaaS

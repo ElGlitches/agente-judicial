@@ -41,8 +41,14 @@ El sistema procesará la información y le mostrará una vista previa en tiempo 
 
 ## 📂 Gestión de Sus Modelos (Carpeta `docs/`)
 Para que el sistema aprenda sus formatos, simplemente guarde sus archivos Word en la carpeta `docs` del proyecto.
-*   **Recomendación:** Use nombres claros como `DIVORCIO_MUTUO.docx` o `ALIMENTOS_PROVISORIOS.docx`.
-*   **Nota:** Una vez guardado el archivo, presione el botón "🔄 Recargar" en la aplicación para que aparezca en la lista.
+*   **Recomendación:** Use nombres claros como `DIVORCIO_MUTUO.docx`.
+*   **Nota:** Una vez guardado el archivo, presione el botón "🔄 Recargar" en la aplicación.
+
+## 🔐 Gestión de Usuarios y SaaS
+El sistema incluye un módulo de administración completo:
+*   **Usuarios:** Gestión vía base de datos local (`saas.db`).
+*   **Créditos:** Sistema de cuotas (ej: 3 escritos gratis) con bloqueo automático (Paywall).
+*   **Admin:** Usuario `admin` con privilegios ilimitados.
 
 ---
 *Desarrollado con tecnología de vanguardia para la eficiencia legal.*

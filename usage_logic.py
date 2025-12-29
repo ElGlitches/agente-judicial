@@ -30,16 +30,11 @@ def init_usage_db():
     conn.commit()
     conn.close()
 
-# --- HELPER DE MIGRACION ---
-# (Si quisieras borrar tablas antiguas: os.remove(DB_PATH))
-
 # --- AUTH FUNCTIONS ---
 def verify_login(username, password):
     """
     Simula verificación de hash. 
     En producción usar bcrypt.checkpw(password.encode(), stored_hash).
-    Aquí comparamos texto plano por simplicidad del requerimiento MVP, 
-    pero la arquitectura soporta hash facilmente.
     """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
