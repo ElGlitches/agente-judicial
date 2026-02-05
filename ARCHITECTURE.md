@@ -44,10 +44,10 @@ graph TD
     RAG -->|8. Contexto Semántico| Orchestrator
     
     Orchestrator -->|9. Prompt + Contexto + JSON| Redactor
-    Redactor -->|10. Texto Generado (Hechos + Derecho)| DocBuilder
+    Redactor -->|10. Texto Generado - Hechos y Derecho| DocBuilder
     
     Orchestrator -->|11. Seleccionar Plantilla Base| TemplateReader
-    TemplateReader -->|12. Objeto Docx (Header/Tablas)| DocBuilder
+    TemplateReader -->|12. Objeto Docx - Header y Tablas| DocBuilder
     
     DocBuilder -->|13. Ensamble Final| FileSystem
     FileSystem -->|14. Descarga WORD| UI
